@@ -2,10 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff">
-<title>Jared Fritz</title><meta name="description" content="Jared Fritz — current work and previous organizations.">
+<title>Jared Fritz</title><meta name="description" content="Jared Fritz — Strategic Partnerships at Quill.org. Current work and previous organizations.">
 <link rel="stylesheet" href="assets/site.css">
 <style>
-.home-name{margin-bottom:28px}
+.home-name{margin-bottom:4px}
+.home-role{margin:0 0 28px;max-width:100%;overflow-wrap:break-word}
+.home-role a{display:inline-block}
+.home-main a{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:4px;text-decoration-color:#a0a0a0}
+.home-main a:hover{color:#205d4d;text-decoration-style:solid;text-decoration-color:currentColor}
+.home-main a:focus-visible{color:#205d4d;outline:2px solid #205d4d;outline-offset:4px;border-radius:2px;text-decoration-color:currentColor}
+@media(pointer:coarse){.home-links a{min-height:44px}.home-role a{min-height:44px;display:inline-flex;align-items:center}}
+@media(prefers-reduced-motion:no-preference){.home-main a{transition:color .15s ease,text-decoration-color .15s ease}}
 .work-group{margin:0 0 28px}
 .work-group h2{font:inherit;margin:0 0 8px;color:#626262}
 </style>
@@ -13,6 +20,7 @@
 <body class="home-page">
 <main class="home-main">
 <h1 class="home-name">Jared Fritz</h1>
+<p class="home-role">Strategic Partnerships at <a href="https://quill.org">Quill.org</a></p>
 <section class="work-group" aria-label="Current work">
 <h2>Current work</h2>
 <nav class="home-links" aria-label="Current work links">
