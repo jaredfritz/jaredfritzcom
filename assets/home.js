@@ -1,0 +1,3 @@
+'use strict';
+async function initHome(){const response=await fetch('home.json');if(!response.ok)throw Error();const c=await response.json();document.getElementById('home-name').textContent=c.name;document.getElementById('home-title').textContent=c.title;const org=document.getElementById('home-org');org.textContent=c.organization;if(c.organizationUrl&&c.organizationUrl.startsWith('https://'))org.href=c.organizationUrl;const linkedin=document.getElementById('home-linkedin');linkedin.hidden=!c.linkedin;if(c.linkedin&&c.linkedin.startsWith('https://'))linkedin.href=c.linkedin;}
+initHome().catch(()=>{});
