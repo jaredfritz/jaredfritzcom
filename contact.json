@@ -1,0 +1,19 @@
+{
+  "name": "Jared Fritz",
+  "givenName": "Jared",
+  "familyName": "Fritz",
+  "tagline": "Senior Director, Strategic Partnerships at Quill.org",
+  "title": "Senior Director, Strategic Partnerships",
+  "organization": "Quill.org",
+  "email": "jared.f@quill.org",
+  "phone": "",
+  "linkedin": "https://www.linkedin.com/in/jaredfritz",
+  "schedule": "",
+  "headshot": "../assets/jared-headshot.jpg",
+  "website": "https://jaredfritz.com",
+  "approved": false,
+  "organizationUrl": "https://quill.org",
+  "cover": "../assets/quill-cover.webp",
+  "coverPosition": "50% 50%",
+  "headshotPosition": "50% 50%"
+}
