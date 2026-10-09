@@ -18,7 +18,7 @@ async function initWelcome(){
  const card=document.getElementById('welcome-card');
  const target=document.querySelector('#card-flip .card-flip-inner');
  const timers=new Set();
- let moving=false,flight;
+ let moving=false,flight,keyboardNavigation=false;
  const schedule=(fn,delay)=>{const id=setTimeout(()=>{timers.delete(id);if(dialog.open)fn();},delay);timers.add(id);};
  const close=()=>{if(dialog.open)dialog.close();};
  const cleanup=()=>{
@@ -31,7 +31,7 @@ async function initWelcome(){
   window.removeEventListener('resize',close);
   window.visualViewport?.removeEventListener('resize',close);
   reduced.removeEventListener('change',close);
-  document.querySelector('#card-flip summary').focus({preventScroll:true});
+  if(keyboardNavigation)document.querySelector('#card-flip summary').focus({preventScroll:true});
  };
  const land=()=>{
   if(moving || !dialog.open)return;
@@ -50,6 +50,9 @@ async function initWelcome(){
  };
  dialog.addEventListener('click',event=>{
   if(event.target===dialog || event.target.classList.contains('welcome-content'))close();
+ });
+ dialog.addEventListener('keydown',event=>{
+  if(event.key==='Tab' || event.key==='Escape')keyboardNavigation=true;
  });
  dialog.addEventListener('close',cleanup,{once:true});
  window.addEventListener('resize',close);
