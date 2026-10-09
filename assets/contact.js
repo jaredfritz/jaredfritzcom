@@ -1,10 +1,38 @@
 'use strict';
 const escapeV = value => String(value).replace(/\\/g,'\\\\').replace(/\r\n|\r|\n/g,'\\n').replace(/;/g,'\\;').replace(/,/g,'\\,');
 function fold(line){let result='',bytes=0;for(const char of line){const size=new TextEncoder().encode(char).length;if(bytes+size>75){result+='\r\n ';bytes=1}result+=char;bytes+=size}return result}
-function vcard(c){const lines=['BEGIN:VCARD','VERSION:3.0',`N:${escapeV(c.familyName)};${escapeV(c.givenName)};;;`,`FN:${escapeV(c.name)}`];for(const [key,value] of [['ORG',c.organization],['TITLE',c.title],['EMAIL;TYPE=INTERNET,WORK',c.email],['TEL;TYPE=CELL',c.phone],['URL',c.website],['URL;TYPE=LinkedIn',c.linkedin]])if(value)lines.push(`${key}:${escapeV(value)}`);lines.push('END:VCARD');return lines.map(fold).join('\r\n')+'\r\n'}
+function vcard(c,photo=''){const lines=['BEGIN:VCARD','VERSION:3.0',`N:${escapeV(c.familyName)};${escapeV(c.givenName)};;;`,`FN:${escapeV(c.name)}`];for(const [key,value] of [['ORG',c.organization],['TITLE',c.title],['EMAIL;TYPE=WORK',c.email],['TEL;TYPE=CELL',c.phone],['URL;TYPE=WORK',c.organizationUrl],['URL',c.linkedin]])if(value)lines.push(`${key}:${escapeV(value)}`);if(photo)lines.push(`PHOTO;ENCODING=b;TYPE=JPEG:${photo}`);lines.push('END:VCARD');return lines.map(fold).join('\r\n')+'\r\n'}
+async function contactPhoto(path){
+ if(!path)return '';
+ const response=await fetch(path);
+ if(!response.ok)throw Error('Profile photo unavailable');
+ const blob=await response.blob();
+ return new Promise((resolve,reject)=>{
+  const reader=new FileReader();
+  reader.onload=()=>resolve(String(reader.result).split(',')[1]);
+  reader.onerror=()=>reject(Error('Profile photo could not be read'));
+  reader.readAsDataURL(blob);
+ });
+}
+
 function addLink(container,label,url,icon){if(!url)return;if(!/^(https:\/\/|mailto:|tel:|sms:)/.test(url))throw Error('Unsupported contact link');const a=document.createElement('a');a.className='contact-link';a.href=url;const badge=document.createElement('span');badge.className='contact-icon';badge.setAttribute('aria-hidden','true');badge.textContent=icon;const text=document.createElement('span');text.className='contact-label';text.textContent=label;const arrow=document.createElement('span');arrow.className='contact-arrow';arrow.setAttribute('aria-hidden','true');arrow.textContent='↗';a.append(badge,text,arrow);container.append(a)}
 function addPhoto(id,path,position,alt){if(!path)return;const container=document.getElementById(id);const fallback=[...container.childNodes];const img=document.createElement('img');img.alt=alt;img.style.objectPosition=position||'50% 50%';img.onload=()=>container.removeAttribute('aria-label');img.onerror=()=>container.replaceChildren(...fallback);img.src=path;container.replaceChildren(img)}
-function renderContact(c){document.getElementById('name').textContent=c.name;const links=document.getElementById('links');links.replaceChildren();addLink(links,c.email,c.email?'mailto:'+c.email:'','@');addLink(links,'quill.org',c.organizationUrl,'↗');addLink(links,'LinkedIn',c.linkedin,'in');addPhoto('portrait',c.headshot,c.headshotPosition,'Portrait of '+c.name);addPhoto('cover',c.cover,c.coverPosition,'');const url=URL.createObjectURL(new Blob([vcard(c)],{type:'text/vcard;charset=utf-8'}));document.getElementById('save').onclick=()=>{const a=document.createElement('a');a.href=url;a.download='Jared-Fritz.vcf';document.body.append(a);a.click();a.remove();document.getElementById('status').textContent=c.approved?'Open the contact file to add me to your contacts.':'Contact downloaded. Open the file to add me to your contacts.'}}
+function renderContact(c){document.getElementById('name').textContent=c.name;const links=document.getElementById('links');links.replaceChildren();addLink(links,c.email,c.email?'mailto:'+c.email:'','@');addLink(links,'quill.org',c.organizationUrl,'↗');addLink(links,'LinkedIn',c.linkedin,'in');addPhoto('portrait',c.headshot,c.headshotPosition,'Portrait of '+c.name);addPhoto('cover',c.cover,c.coverPosition,'');const save=document.getElementById('save');
+ save.onclick=async()=>{
+  save.disabled=true;
+  const status=document.getElementById('status');
+  status.textContent='';
+  try{
+   const photo=await contactPhoto(c.headshot);
+   const url=URL.createObjectURL(new Blob([vcard(c,photo)],{type:'text/vcard;charset=utf-8'}));
+   const a=document.createElement('a');a.href=url;a.download='Jared-Fritz.vcf';document.body.append(a);a.click();a.remove();
+   setTimeout(()=>URL.revokeObjectURL(url),60000);
+   status.textContent='Open the contact file to add me to your contacts.';
+  }catch{status.textContent='Contact download could not complete. Please try again.';}
+  finally{save.disabled=false;}
+ };
+}
+
 
 async function init(){const response=await fetch('../contact.json');if(!response.ok)throw Error('Contact configuration unavailable');renderContact(await response.json())}
 init().catch(()=>{document.getElementById('save').disabled=true;document.getElementById('status').textContent='Contact details could not load. Please refresh and try again.'});
