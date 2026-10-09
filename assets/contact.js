@@ -9,42 +9,65 @@ function renderContact(c){document.getElementById('name').textContent=c.name;con
 async function init(){const response=await fetch('../contact.json');if(!response.ok)throw Error('Contact configuration unavailable');renderContact(await response.json())}
 init().catch(()=>{document.getElementById('save').disabled=true;document.getElementById('status').textContent='Contact details could not load. Please refresh and try again.'});
 
-function initWelcome(){
+async function initWelcome(){
  const dialog=document.getElementById('card-welcome');
- if(!dialog || typeof dialog.showModal!=='function')return;
+ const reduced=window.matchMedia('(prefers-reduced-motion: reduce)');
+ if(!dialog || typeof dialog.showModal!=='function' || reduced.matches)return;
  const visitKey='jaredfritz-card-welcome-seen';
  try{if(sessionStorage.getItem(visitKey))return;}catch{}
  const card=document.getElementById('welcome-card');
- const dismiss=document.getElementById('welcome-dismiss');
- let flipTimer;
- const setSide=contactSide=>{
-  card.classList.toggle('is-flipped',contactSide);
-  card.setAttribute('aria-pressed',String(contactSide));
-  card.setAttribute('aria-label',contactSide?'Show Quill side of business card':'Show contact side of business card');
-  card.querySelector('.welcome-logo').setAttribute('aria-hidden',String(contactSide));
-  card.querySelector('.welcome-contact').setAttribute('aria-hidden',String(!contactSide));
- };
- const flip=()=>setSide(true);
- card.addEventListener('click',()=>{
-  clearTimeout(flipTimer);
-  setSide(!card.classList.contains('is-flipped'));
- });
- const close=()=>dialog.close();
- dismiss.addEventListener('click',close);
- dialog.addEventListener('click',event=>{
-  if(event.target===dialog || event.target.classList.contains('welcome-content') || event.target.classList.contains('welcome-help'))close();
- });
- dialog.addEventListener('close',()=>{
-  clearTimeout(flipTimer);
+ const target=document.querySelector('#card-flip .card-flip-inner');
+ const timers=new Set();
+ let moving=false,flight;
+ const schedule=(fn,delay)=>{const id=setTimeout(()=>{timers.delete(id);if(dialog.open)fn();},delay);timers.add(id);};
+ const close=()=>{if(dialog.open)dialog.close();};
+ const cleanup=()=>{
+  timers.forEach(clearTimeout);timers.clear();
+  if(flight)flight.cancel();
+  target.style.visibility='';
   document.body.classList.remove('welcome-open');
+  dialog.classList.remove('is-landing');
+  card.style.transform='';
+  window.removeEventListener('resize',close);
+  window.visualViewport?.removeEventListener('resize',close);
+  reduced.removeEventListener('change',close);
   document.querySelector('#card-flip summary').focus({preventScroll:true});
+ };
+ const land=()=>{
+  if(moving || !dialog.open)return;
+  moving=true;
+  if(typeof card.animate!=='function'){close();return;}
+  const from=card.getBoundingClientRect(),to=target.getBoundingClientRect();
+  if(!from.width || !to.width){close();return;}
+  target.style.visibility='hidden';
+  card.style.transformOrigin='top left';
+  dialog.classList.add('is-landing');
+  flight=card.animate([
+   {transform:'translate(0px,0px) scale(1,1)'},
+   {transform:`translate(${to.left-from.left}px,${to.top-from.top}px) scale(${to.width/from.width},${to.height/from.height})`}
+  ],{duration:700,easing:'cubic-bezier(.22,1,.36,1)',fill:'forwards'});
+  flight.finished.then(close,close);
+ };
+ dialog.addEventListener('click',event=>{
+  if(event.target===dialog || event.target.classList.contains('welcome-content'))close();
  });
- const reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
- if(reduced)flip();
+ dialog.addEventListener('close',cleanup,{once:true});
+ window.addEventListener('resize',close);
+ window.visualViewport?.addEventListener('resize',close);
+ reduced.addEventListener('change',close);
  dialog.showModal();
  document.body.classList.add('welcome-open');
  try{sessionStorage.setItem(visitKey,'true');}catch{}
- if(!reduced)flipTimer=setTimeout(flip,1400);
+ // Start timing only when both card faces are ready to display.
+ await Promise.all([...card.querySelectorAll('img')].map(img=>img.decode().catch(()=>{})));
+ if(!dialog.open)return;
+ schedule(()=>{
+  card.classList.add('is-flipped');
+  card.querySelector('.welcome-logo').setAttribute('aria-hidden','true');
+  card.querySelector('.welcome-contact').setAttribute('aria-hidden','false');
+  // 600ms flip, followed by a 1200ms reading pause.
+  schedule(land,1800);
+ },1400);
 }
 initWelcome();
 
