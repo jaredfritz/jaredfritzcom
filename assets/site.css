@@ -32,3 +32,8 @@ body.welcome-open{overflow:hidden}
 .card-welcome.is-landing .welcome-face{border-radius:5px;box-shadow:0 3px 12px #0002;transition:border-radius .7s ease,box-shadow .7s ease}
 
 html{scrollbar-gutter:stable}
+
+.share-actions{text-align:center;margin-top:8px}
+.share-card{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:var(--jf-muted);font-size:13px;cursor:pointer}
+.share-card:hover{color:var(--jf-accent);text-decoration:underline;text-underline-offset:3px}
+.share-url{display:block;width:100%;margin:4px 0 0;padding:10px;border:1px solid var(--jf-line);border-radius:6px;background:white;color:var(--jf-ink);font:inherit;font-size:13px}

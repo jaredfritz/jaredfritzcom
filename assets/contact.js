@@ -15,9 +15,9 @@ async function contactPhoto(path){
  });
 }
 
-function addLink(container,label,url,icon){if(!url)return;if(!/^(https:\/\/|mailto:|tel:|sms:)/.test(url))throw Error('Unsupported contact link');const a=document.createElement('a');a.className='contact-link';a.href=url;const badge=document.createElement('span');badge.className='contact-icon';badge.setAttribute('aria-hidden','true');badge.textContent=icon;const text=document.createElement('span');text.className='contact-label';text.textContent=label;const arrow=document.createElement('span');arrow.className='contact-arrow';arrow.setAttribute('aria-hidden','true');arrow.textContent='↗';a.append(badge,text,arrow);container.append(a)}
+function addLink(container,label,url,icon){if(!url)return;if(!/^(https:\/\/|mailto:|tel:|sms:)/.test(url))throw Error('Unsupported contact link');const a=document.createElement('a');a.className='contact-link';a.href=url;const badge=document.createElement('span');badge.className='contact-icon';badge.setAttribute('aria-hidden','true');if(icon==='quill'){badge.innerHTML='<svg viewBox="0 0 32 40" width="20" height="25" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 37h8l5-4-2-5L25 8a5 5 0 0 0-9-5L8 22l2 10M10 32 21 8M9 22l8-5M14 28l8-8"/></svg>';}else{badge.textContent=icon;}const text=document.createElement('span');text.className='contact-label';text.textContent=label;const arrow=document.createElement('span');arrow.className='contact-arrow';arrow.setAttribute('aria-hidden','true');arrow.textContent='↗';a.append(badge,text,arrow);container.append(a)}
 function addPhoto(id,path,position,alt){if(!path)return;const container=document.getElementById(id);const fallback=[...container.childNodes];const img=document.createElement('img');img.alt=alt;img.style.objectPosition=position||'50% 50%';img.onload=()=>container.removeAttribute('aria-label');img.onerror=()=>container.replaceChildren(...fallback);img.src=path;container.replaceChildren(img)}
-function renderContact(c){document.getElementById('name').textContent=c.name;const links=document.getElementById('links');links.replaceChildren();addLink(links,c.email,c.email?'mailto:'+c.email:'','@');addLink(links,'quill.org',c.organizationUrl,'↗');addLink(links,'LinkedIn',c.linkedin,'in');addPhoto('portrait',c.headshot,c.headshotPosition,'Portrait of '+c.name);addPhoto('cover',c.cover,c.coverPosition,'');const save=document.getElementById('save');
+function renderContact(c){document.getElementById('name').textContent=c.name;const links=document.getElementById('links');links.replaceChildren();addLink(links,c.email,c.email?'mailto:'+c.email:'','@');addLink(links,'quill.org',c.organizationUrl,'quill');addLink(links,'LinkedIn',c.linkedin,'in');addPhoto('portrait',c.headshot,c.headshotPosition,'Portrait of '+c.name);addPhoto('cover',c.cover,c.coverPosition,'');const save=document.getElementById('save');
  save.onclick=async()=>{
   save.disabled=true;
   const status=document.getElementById('status');
@@ -108,3 +108,28 @@ inlineCard.addEventListener('toggle',()=>{
  inlineCard.querySelector('.card-back').setAttribute('aria-hidden',String(!inlineCard.open));
  inlineCard.querySelector('summary').setAttribute('aria-label',inlineCard.open?'Show contact side of business card':'Show Quill side of business card');
 });
+
+const cardShareUrl='https://jaredfritz.com/card/';
+async function copyCardLink(){
+ const status=document.getElementById('status');
+ try{
+  if(!navigator.clipboard?.writeText)throw Error('Clipboard unavailable');
+  await navigator.clipboard.writeText(cardShareUrl);
+  status.textContent='Card link copied.';
+ }catch{
+  const field=document.getElementById('share-url');
+  field.hidden=false;field.value=cardShareUrl;field.focus();field.select();
+  status.textContent='Copy the selected card link to share it.';
+ }
+}
+async function shareCard(){
+ const status=document.getElementById('status');
+ document.getElementById('share-url').hidden=true;
+ status.textContent='';
+ if(typeof navigator.share==='function'){
+  try{await navigator.share({title:'Jared Fritz — Digital Business Card',url:cardShareUrl});return;}
+  catch(error){if(error.name==='AbortError')return;}
+ }
+ await copyCardLink();
+}
+document.getElementById('share-card').addEventListener('click',shareCard);
