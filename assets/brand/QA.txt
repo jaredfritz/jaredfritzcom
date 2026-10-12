@@ -1,0 +1,1 @@
+PASS: exact grid, master colors and alpha, dimensions, opaque charcoal corners, ICO 16/32/48 frames, maskable circle containment.
