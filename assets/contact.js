@@ -127,9 +127,28 @@ async function shareCard(){
  document.getElementById('share-url').hidden=true;
  status.textContent='';
  if(typeof navigator.share==='function'){
-  try{await navigator.share({title:'Jared Fritz — Digital Business Card',url:cardShareUrl});return;}
+  try{await navigator.share({title:'Jared Fritz — Card',url:cardShareUrl});return;}
   catch(error){if(error.name==='AbortError')return;}
  }
  await copyCardLink();
 }
 document.getElementById('share-card').addEventListener('click',shareCard);
+
+const qrDialog=document.getElementById('qr-share');
+const qrTrigger=document.getElementById('share-qr');
+qrTrigger.addEventListener('click',()=>{
+ if(!qrDialog.open){
+  qrDialog.showModal();
+  document.body.classList.add('qr-open');
+ }
+});
+document.getElementById('qr-close').addEventListener('click',()=>qrDialog.close());
+qrDialog.addEventListener('click',event=>{
+ if(event.target!==qrDialog)return;
+ const bounds=qrDialog.getBoundingClientRect();
+ if(event.clientX<bounds.left || event.clientX>bounds.right || event.clientY<bounds.top || event.clientY>bounds.bottom)qrDialog.close();
+});
+qrDialog.addEventListener('close',()=>{
+ document.body.classList.remove('qr-open');
+ qrTrigger.focus({preventScroll:true});
+});

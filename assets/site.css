@@ -37,3 +37,11 @@ html{scrollbar-gutter:stable}
 .share-card{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:var(--jf-muted);font-size:13px;cursor:pointer}
 .share-card:hover{color:var(--jf-accent);text-decoration:underline;text-underline-offset:3px}
 .share-url{display:block;width:100%;margin:4px 0 0;padding:10px;border:1px solid var(--jf-line);border-radius:6px;background:white;color:var(--jf-ink);font:inherit;font-size:13px}
+
+.share-divider{display:inline-block;height:20px;width:1px;vertical-align:middle;background:var(--jf-line);margin:0 4px}
+.qr-share{padding:48px 24px 24px;border:0;border-radius:20px;background:var(--jf-paper);width:330px;max-width:calc(100vw - 32px);max-height:calc(100dvh - 32px);overflow:auto}
+.qr-share::backdrop{background:rgb(18 31 27 / .65)}
+.qr-share img{display:block;width:100%;height:auto;background:white}
+.qr-close{position:absolute;top:4px;right:4px;display:grid;place-items:center;width:44px;height:44px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--jf-muted);cursor:pointer}
+.qr-close:hover{color:var(--jf-ink)}
+body.qr-open{overflow:hidden}
