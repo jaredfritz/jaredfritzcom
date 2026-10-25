@@ -2,7 +2,7 @@
 -- New Data API settings may require explicit table exposure; grants are included.
 create extension if not exists pgcrypto with schema extensions;
 create table if not exists public.workout_exercises (
-  id uuid primary key,
+  id text primary key,
   user_id uuid not null references auth.users(id) on delete cascade,
   name text not null check (char_length(name) between 1 and 80),
   category text not null default 'Other',
