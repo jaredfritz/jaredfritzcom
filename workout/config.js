@@ -1,6 +1,5 @@
-// Public browser configuration only. Never place a Supabase secret or service_role key here.
-// A blank configuration enables local-only mode until Supabase has been provisioned.
+// Supabase browser publishable credentials only. Never put secret/service_role keys here.
 window.WORKOUT_CONFIG = {
-  supabaseUrl: "",
-  supabasePublishableKey: ""
+  supabaseUrl: "https://yphdnvcesfpuzwedppwo.supabase.co",
+  supabasePublishableKey: "sb_publishable_cSmBhlsxfHhGhuK_sxwZ5g_DmDp67_7"
 };
