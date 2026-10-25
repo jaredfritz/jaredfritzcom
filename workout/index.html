@@ -15,7 +15,7 @@
 <div class="app">
   <header class="topbar">
     <div class="brand"><span class="brand-icon">▥</span><div><span class="eyebrow">PERSONAL TRACKER</span><h1>Workout log</h1></div></div>
-    <button class="icon-btn" id="account-button" data-action="account" aria-label="Account and sync settings" title="Account">⚙</button>
+    <button class="icon-btn" id="account-button" data-act="account" aria-label="Account and sync settings" title="Account">⚙</button>
   </header>
   <div id="sync-banner" class="sync-banner" role="status" aria-live="polite"></div>
   <main id="screen" class="main"></main>
@@ -26,7 +26,7 @@
   </nav>
 </div>
 <dialog id="exercise-dialog" class="dialog" aria-labelledby="exercise-dialog-title">
-  <div class="dialog-head"><h2 id="exercise-dialog-title">Add exercise</h2><button data-action="close-exercises" aria-label="Close" class="icon-btn">✕</button></div>
+  <div class="dialog-head"><h2 id="exercise-dialog-title">Add exercise</h2><button data-act="close-exercises" aria-label="Close" class="icon-btn">✕</button></div>
   <input type="search" id="exercise-search" class="search" placeholder="Search exercises" autocomplete="off" aria-label="Search exercises">
   <div id="exercise-filters" class="filters"></div>
   <div id="exercise-list" class="exercise-list"></div>
@@ -37,7 +37,7 @@
   </form>
 </dialog>
 <dialog id="account-dialog" class="dialog" aria-labelledby="account-title">
-  <div class="dialog-head"><h2 id="account-title">Settings & sync</h2><button data-action="close-account" class="icon-btn" aria-label="Close">✕</button></div>
+  <div class="dialog-head"><h2 id="account-title">Settings & sync</h2><button data-act="close-account" class="icon-btn" aria-label="Close">✕</button></div>
   <div id="account-content"></div>
 </dialog>
 <input type="file" id="import-file" accept=".json,application/json" hidden>
