@@ -2,6 +2,7 @@
 # These exclusions do not prevent access by bots that ignore robots.txt.
 
 User-agent: *
+Disallow: /workout/
 Disallow: /card/
 Disallow: /contact.json
 Disallow: /assets/business-card-front.webp

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow,noarchive,nosnippet,noimageindex">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#142c2a">
+<title>Workout Log</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><span class="brand-icon">▥</span><div><span class="eyebrow">PERSONAL TRACKER</span><h1>Workout log</h1></div></div>
+    <button class="icon-btn" id="account-button" data-action="account" aria-label="Account and sync settings" title="Account">⚙</button>
+  </header>
+  <div id="sync-banner" class="sync-banner" role="status" aria-live="polite"></div>
+  <main id="screen" class="main"></main>
+  <nav class="bottom-nav" aria-label="App navigation">
+    <button data-nav="today" class="active"><span class="nav-icon">▤</span>Today</button>
+    <button data-nav="history"><span class="nav-icon">◷</span>History</button>
+    <button data-nav="progress"><span class="nav-icon">↗</span>Progress</button>
+  </nav>
+</div>
+<dialog id="exercise-dialog" class="dialog" aria-labelledby="exercise-dialog-title">
+  <div class="dialog-head"><h2 id="exercise-dialog-title">Add exercise</h2><button data-action="close-exercises" aria-label="Close" class="icon-btn">✕</button></div>
+  <input type="search" id="exercise-search" class="search" placeholder="Search exercises" autocomplete="off" aria-label="Search exercises">
+  <div id="exercise-filters" class="filters"></div>
+  <div id="exercise-list" class="exercise-list"></div>
+  <form id="custom-exercise-form" class="custom-form">
+    <label for="custom-name">New exercise</label>
+    <div class="inline"><input id="custom-name" name="name" maxlength="80" required placeholder="Exercise name"><select id="custom-category" name="category" aria-label="Category"><option>Push</option><option>Pull</option><option>Legs</option><option>Shoulders</option><option>Arms</option><option>Cardio</option><option>Core</option><option>Other</option></select></div>
+    <button type="submit" class="btn light full">Create and add</button>
+  </form>
+</dialog>
+<dialog id="account-dialog" class="dialog" aria-labelledby="account-title">
+  <div class="dialog-head"><h2 id="account-title">Settings & sync</h2><button data-action="close-account" class="icon-btn" aria-label="Close">✕</button></div>
+  <div id="account-content"></div>
+</dialog>
+<input type="file" id="import-file" accept=".json,application/json" hidden>
+<div id="toast" role="status" aria-live="polite" class="toast" hidden></div>
+<script src="./config.js"></script>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
