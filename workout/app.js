@@ -1,6 +1,6 @@
 
 const config=window.WORKOUT_CONFIG||{},KEY='workout-v1',OWNER_KEY='workout-last-owner-v1';
-const $=s=>document.querySelector(s),uuid=()=>crypto.randomUUID(),today=()=>new Date().toLocaleDateString('en-CA'),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $=s=>document.querySelector(s),uuid=()=>crypto.randomUUID(),today=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')},esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const names=[['Dumbbell Bench Press','Push'],['Bench Press Machine','Push'],['Dumbbell Curls','Arms'],['Bicep Curl Machine','Arms'],['Row Machine','Pull'],['Lat Pulldown','Pull'],['Dumbbell Shoulder Press','Shoulders'],['Shoulder Press Machine','Shoulders'],['Lateral Raises','Shoulders'],['Lateral Raise Machine','Shoulders'],['Leg Press','Legs'],['Romanian Deadlift','Legs'],['Triceps Pressdown','Arms'],['Incline Treadmill','Cardio'],['Plank','Core'],['Squats','Legs'],['Calf Raise','Legs']];
 const initial=()=>({exercises:names.map(([name,category])=>({id:'ex-'+name.toLowerCase().replace(/[^a-z0-9]+/g,'-'),name,category})),workouts:[],activeId:null});
 let state;try{state=JSON.parse(localStorage.getItem(KEY))||initial()}catch{state=initial()}if(!Array.isArray(state.exercises)||!Array.isArray(state.workouts))state=initial();
