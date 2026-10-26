@@ -1,0 +1,3 @@
+[functions.workout-unlock]
+verify_jwt = false
+# The login endpoint verifies its own password before issuing a user session.

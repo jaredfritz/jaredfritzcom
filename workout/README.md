@@ -1,25 +1,75 @@
 # Workout Log — jaredfritz.com/workout/
 
-A mobile-first, **unlisted but publicly downloadable** personal workout PWA. Nothing links to this URL from the main site. \`noindex\` and robots.txt discourage crawlers but **do not provide access control**. Keep all workout history out of Git.
+A mobile-first personal workout tracker with a single password screen and cloud sync.
+The static page and its code are public; the server checks the password before issuing a
+session for the configured owner. Workout history stays out of Git.
 
 ## Features
-- Quick start, A/B/quick suggestions (never enforced)
-- Searchable exercise catalog and custom exercises
-- Three set rows per exercise, weights/reps editing and completion checkmarks
-- Previous performance per exercise, workout history, progress chart and movement distribution
-- Works in local-only mode with browser storage, export/import backup
-- Optional Supabase magic-link login and RLS-protected cloud sync
+- Start, finish, or discard a workout without fixed routines
+- Searchable exercise list showing days since each exercise was last logged
+- Three sets by default, with previous weights and reps prefilled and editable
+- Edit sets to change the count or individual weights/reps; no completion checkboxes
+- Treadmill distance in miles, duration in minutes, and incline in percent
+- Only treadmill and previously recorded exercises appear by default; custom exercises remain available
+- Workout history, movement coverage, and highest weights per exercise
+- Browser-local persistence while unlocked, JSON export/import, and cross-device sync
+- A remembered session on each device; Settings → Lock tracker clears its local workout cache
 
-## Setup
-1. Create a **new dedicated Supabase project**. Do not reuse a civic-data project.
-2. Review and run \`workout/schema.sql\` in that project. Check RLS and the Data API exposed schemas/grants. Never run this SQL on a project with conflicting table names.
-3. In Supabase Authentication > URL Configuration, allow \`https://jaredfritz.com/workout/\` as a redirect URL. Ensure email sign-in is enabled; consider disabling new signups once your account exists.
-4. Edit only the **public** values in \`workout/config.js\`: project URL and publishable key. Do not use any service_role or secret key.
-5. Test sign-in, sync and cross-account isolation, then deploy by merging this branch to the site's GitHub Pages publishing branch.
-6. In the History tab, use Import to select the private \`workout-history-import.json\` generated from the legacy XLSM. The history data is intentionally NOT committed.
+## Server-side password access
+The browser posts the password over HTTPS to the Supabase `workout-unlock` Edge Function.
+The function calls a service-only database verifier, then creates a normal Supabase Auth
+session for the existing owner without sending email. Existing workout RLS remains in force.
 
-## Important
-- Until Supabase is configured, the app works in *local-only mode*. Data stays in that browser's localStorage and is not backed up to the cloud. Use Export before clearing browser storage or switching devices.
-- After sign-in, local records merge to your own Supabase account. Sync errors show a warning; local data is retained, and you can retry.
-- A legacy sheet value of a single \`8\` represents **one recorded set**; do not infer three completed sets.
-- This app is not medical guidance or a substitute for professional exercise programming.
+The password is stored only as a salted bcrypt hash in `workout_password_access`.
+Neither that table nor the verifier can be accessed by anonymous or authenticated browser
+clients. The verifier uses a row lock to enforce a global maximum of five attempts per
+minute across all function instances. This intentionally simple single-user limit can
+temporarily block legitimate login attempts too. Already unlocked devices can still sync.
+
+No password, password hash, owner email, service key, or workout records belong in this repo.
+The function uses Supabase's server-injected environment variables. Its `verify_jwt=false`
+setting allows login before a session exists; the function performs its own password check.
+
+## Deployment
+1. Use the dedicated workout Supabase project and the existing tables in `schema.sql`.
+2. Apply `password-access.sql` once.
+3. In the private SQL editor, provision the singleton row using your existing Auth user ID
+   and `extensions.crypt(password, extensions.gen_salt('bf',12))`. Do not commit this statement
+   with the actual password or its resulting hash. Changing the password does not revoke
+   sessions already issued; revoke those separately if needed.
+4. Deploy `supabase/functions/workout-unlock/index.ts` with JWT verification disabled.
+   Allow the production origin in the function; CORS is not a substitute for its password check.
+5. Set the public project URL and publishable key in `config.js`. Never use a service key.
+6. Verify wrong-password rejection, correct-password login, history access, anonymous denial,
+   and locking before publishing the static page.
+
+The existing owner's cloud data is retained; this flow does not create a replacement account.
+Existing email-link sessions also remain valid. The static app no longer offers email login.
+
+## Backup and legacy import
+Export a JSON backup before clearing browser storage or locking while sync is pending.
+Sync failures keep the local copy while the tracker remains unlocked.
+The private legacy import supports the original XLSM conversion; a single recorded rep value
+represents one set, not three completed sets.
+
+Strength entries still store individual sets, even when the compact view edits them together.
+The three-set default applies only to new entries; historical set counts remain unchanged.
+When individual sets differ, the compact view displays “Varies” and preserves those values
+until a shared value is explicitly entered. Treadmill entries use a separate item shape
+with `kind`, `miles`, `durationMinutes`, and `inclinePercent` instead of sets. These fields
+round-trip through the existing session JSON payload and backup format without a schema change.
+Unused starter exercises are hidden based on recorded history, not removed from historical data.
+
+## Verification
+Run `node tools/test-workout-access.cjs` with Node 24 or later. These tests cover the locked
+view, session exchange, clearing cached data, an in-flight sync after lock, and endpoint
+validation/session responses with mocked Auth. Also test the deployed endpoint and database
+grants directly; the tests do not replace live integration checks.
+
+Run `node tools/test-workout-logging.cjs` for recency, catalog visibility, set defaults,
+and treadmill data tests. With Playwright and Chromium installed, run
+`node tools/test-workout-browser.cjs` for a mobile browser check using synthetic local
+data and a mocked cloud client; it does not write to the live database.
+
+The security advisor's “RLS enabled, no policy” notice for the verifier table is intentional:
+only the server's service role can access it.

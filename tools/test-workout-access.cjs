@@ -1,0 +1,121 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const { stripTypeScriptTypes } = require('node:module');
+const path = require('node:path');
+const root = path.resolve(__dirname, '..');
+
+function frontend() {
+  const elements = new Map();
+  const element = selector => {
+    if (!elements.has(selector)) elements.set(selector, {
+      innerHTML: '', textContent: '', hidden: false, value: '',
+      addEventListener() {}, close() {}, focus() {},
+    });
+    return elements.get(selector);
+  };
+  const storage = new Map();
+  const context = vm.createContext({
+    ...require('../workout/logging.mjs'),
+    window: { WORKOUT_CONFIG: { supabaseUrl: 'https://example.test', supabasePublishableKey: 'public' } },
+    document: { querySelector: element, querySelectorAll: () => [], addEventListener() {} },
+    localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) },
+    crypto: require('node:crypto').webcrypto, setTimeout, clearTimeout,
+  });
+  const source = fs.readFileSync(path.join(root, 'workout/app.js'), 'utf8');
+  vm.runInContext(source.replace(/^import .*;\n/, '').slice(0, source.replace(/^import .*;\n/, '').lastIndexOf('(async()=>{')), context);
+  return { context, element, storage, run: code => vm.runInContext(code, context) };
+}
+
+test('locked page hides cached history and navigation, and lock clears the cache', () => {
+  const app = frontend();
+  app.run("booting=false; state.workouts=[{id:'sample',date:'2026-01-01',status:'completed',items:[]}]; tab='history'; render()");
+  assert.match(app.element('#screen').innerHTML, /id="unlock-form"/);
+  assert.doesNotMatch(app.element('#screen').innerHTML, /2026|Sessions/);
+  assert.equal(app.element('.bottom-nav').hidden, true);
+  app.run("session={user:{id:'owner'}};render()");
+  assert.match(app.element('#screen').innerHTML, /Sessions/);
+  assert.equal(app.element('.bottom-nav').hidden, false);
+  app.storage.set('workout-v1', 'cached');
+  app.run('clearLockedView()');
+  assert.equal(app.storage.has('workout-v1'), false);
+  assert.equal(app.run('session'), null);
+  assert.match(app.element('#screen').innerHTML, /id="unlock-form"/);
+});
+
+test('unlock refuses server errors and accepts a server-issued session', async () => {
+  const app = frontend();
+  app.context.fetch = async () => ({ ok: false, json: async () => ({ error: 'Incorrect password' }) });
+  await assert.rejects(app.run("unlock('incorrect')"), /Incorrect password/);
+  assert.equal(app.run('session'), null);
+  app.context.fetch = async (_url, request) => {
+    assert.equal(request.method, 'POST');
+    assert.equal(JSON.parse(request.body).password, 'example');
+    return { ok: true, json: async () => ({ access_token: 'access', refresh_token: 'refresh' }) };
+  };
+  app.run("client={auth:{setSession:async tokens=>({data:{session:{user:{id:'owner'}}},error:null})}};sync=async()=>{}");
+  await app.run("unlock('example')");
+  assert.equal(app.run('session.user.id'), 'owner');
+  assert.equal(app.element('.bottom-nav').hidden, false);
+});
+
+test('in-flight sync cannot restore cache after locking', async () => {
+  const app = frontend();
+  app.run("session={user:{id:'owner'}};client={from:()=>({select:()=>new Promise(resolve=>setTimeout(()=>resolve({data:[],error:null}),10))})}");
+  const pending = app.run('sync()');
+  app.run('clearLockedView()');
+  await pending;
+  assert.equal(app.storage.has('workout-v1'), false);
+  assert.equal(app.run('session'), null);
+});
+
+function backend(status = 'ok') {
+  let authCalls = 0;
+  const client = {
+    rpc: async () => ({ data: { status, owner_id: 'owner' }, error: null }),
+    auth: {
+      admin: {
+        getUserById: async () => { authCalls++; return { data: { user: { email: 'owner@example.test' } } }; },
+        generateLink: async () => ({ data: { properties: { hashed_token: 'one-time-token' } } }),
+      },
+      verifyOtp: async () => ({ data: { session: { user: { id: 'owner' }, access_token: 'access', refresh_token: 'refresh' } } }),
+    },
+  };
+  const context = vm.createContext({
+    createClient: () => client, Response, TextDecoder, TextEncoder,
+    Deno: { env: { get: () => 'server-only-secret' }, serve() {} },
+  });
+  let source = fs.readFileSync(path.join(root, 'supabase/functions/workout-unlock/index.ts'), 'utf8');
+  source = source.replace(/^import .*;\n/, '').replace('export async function', 'async function');
+  vm.runInContext(stripTypeScriptTypes(source), context);
+  return { handle: req => context.handleRequest(req), calls: () => authCalls };
+}
+const request = (body = { password: 'example' }, origin = 'https://jaredfritz.com') => new Request('https://example.test/unlock', {
+  method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+});
+
+test('endpoint rejects incorrect passwords, rate limits, and disallowed origins before issuing sessions', async () => {
+  for (const [status, expected] of [['invalid', 401], ['limited', 429], ['unconfigured', 503]]) {
+    const app = backend(status);
+    const response = await app.handle(request());
+    assert.equal(response.status, expected);
+    assert.equal(app.calls(), 0);
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  }
+  const app = backend();
+  assert.equal((await app.handle(request({}, 'https://other.test'))).status, 403);
+  assert.equal((await app.handle(request({}))).status, 400);
+  assert.equal((await app.handle(request({ password: 'x'.repeat(2000) }))).status, 413);
+  assert.equal(app.calls(), 0);
+});
+
+test('endpoint issues only owner session tokens and handles preflight', async () => {
+  const app = backend();
+  const response = await app.handle(request());
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { access_token: 'access', refresh_token: 'refresh' });
+  assert.equal(response.headers.get('Access-Control-Allow-Origin'), 'https://jaredfritz.com');
+  const preflight = await app.handle(new Request('https://example.test', { method: 'OPTIONS', headers: { Origin: 'https://jaredfritz.com' } }));
+  assert.equal(preflight.status, 204);
+});
