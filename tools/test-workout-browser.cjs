@@ -24,19 +24,46 @@ const root = path.resolve(__dirname, '..');
     page.on('pageerror',error=>errors.push(error.message));
     await page.clock.setFixedTime(new Date('2026-10-26T12:00:00Z'));
     await page.route('https://esm.sh/**',route=>route.fulfill({contentType:'text/javascript',body:`
+      let exercises=[{id:'old-treadmill',name:'Treadmill',category:'Cardio'}];
       export function createClient(){return {
         auth:{getSession:async()=>({data:{session:{user:{id:'test-owner'}}}}),onAuthStateChange(){},signOut:async()=>({error:null})},
-        from(table){return {select:async()=>({data:[],error:null}),upsert:async rows=>{if(table==='workout_sessions')window.cloudWorkouts=structuredClone(rows);return {error:null}}}}
+        from(table){return {
+          select:async()=>({data:table==='workout_exercises'?exercises:[],error:null}),
+          upsert:async rows=>{if(table==='workout_sessions')window.cloudWorkouts=structuredClone(rows);return {error:null}},
+          delete:()=>({eq:()=>({in:async(_field,ids)=>{
+            if(!window.cloudWorkouts||window.cloudWorkouts.some(row=>row.payload.items.some(i=>ids.includes(i.exerciseId))))throw Error('Cleanup happened before history was saved');
+            exercises=exercises.filter(e=>!ids.includes(e.id));window.cleanedAliases=ids;return {error:null};
+          }})})
+        }}
       }}
     `}));
     await page.addInitScript(()=>localStorage.setItem('workout-v1',JSON.stringify({
       exercises:[{id:'lift',name:'Example lift',category:'Push'},{id:'unused',name:'Unused exercise',category:'Other'},
+        {id:'recent',name:'Another lift',category:'Pull'},{id:'old-treadmill',name:'Treadmill',category:'Cardio'},
         {id:'ex-incline-treadmill',name:'Incline Treadmill',category:'Cardio'}],
-      workouts:[{id:'previous',date:'2026-10-20',status:'completed',updatedAt:1,items:[{id:'previous-item',exerciseId:'lift',sets:[{id:'previous-set',weight:50,reps:8}]}]}],activeId:null
+      workouts:[{id:'previous',date:'2026-10-20',status:'completed',updatedAt:1,items:[{id:'previous-item',exerciseId:'lift',sets:[{id:'previous-set',weight:50,reps:8}]}]},
+        {id:'recent-session',date:'2026-10-24',status:'completed',updatedAt:1,items:[{id:'recent-item',exerciseId:'recent',sets:[{id:'recent-set',weight:20,reps:8}]}]},
+        {id:'cardio-history',date:'2026-10-18',status:'completed',updatedAt:1,items:[{id:'old-cardio',exerciseId:'old-treadmill',kind:'treadmill',miles:0.5,durationMinutes:10,inclinePercent:2}]}],activeId:null
     })));
     await page.goto(`http://127.0.0.1:${server.address().port}/workout/`);
     await page.getByText('6 days ago',{exact:true}).waitFor();
     assert.equal(await page.getByText('Unused exercise',{exact:true}).count(),0);
+    assert.equal(await page.locator('.picker-row').filter({hasText:'Treadmill'}).count(),1);
+    await page.waitForFunction(()=>window.cleanedAliases?.includes('old-treadmill'));
+    await page.getByRole('button',{name:'Search / add new',exact:true}).click();
+    await page.getByLabel('Sort exercises',{exact:true}).selectOption('oldest');
+    assert.deepEqual(await page.locator('#exercise-list .picker-row b').allTextContents(),['Treadmill','Example lift','Another lift']);
+    await page.getByLabel('Sort exercises',{exact:true}).selectOption('newest');
+    assert.deepEqual(await page.locator('#exercise-list .picker-row b').allTextContents(),['Another lift','Example lift','Treadmill']);
+    await page.getByLabel('Search exercises',{exact:true}).fill('lift');
+    assert.deepEqual(await page.locator('#exercise-list .picker-row b').allTextContents(),['Another lift','Example lift']);
+    await page.getByLabel('Sort exercises',{exact:true}).selectOption('oldest');
+    assert.equal(await page.evaluate(()=>localStorage.getItem('workout-exercise-sort')),'oldest');
+    await page.getByRole('button',{name:'Close',exact:true}).click();
+    await page.getByRole('button',{name:'Search / add new',exact:true}).click();
+    assert.equal(await page.getByLabel('Sort exercises',{exact:true}).inputValue(),'oldest');
+    await page.getByLabel('Sort exercises',{exact:true}).selectOption('name');
+    await page.getByRole('button',{name:'Close',exact:true}).click();
     await page.locator('.picker-row').filter({hasText:'Example lift'}).getByRole('button',{name:'Add',exact:true}).click();
     assert.equal(await page.getByRole('button',{name:/Quick|suggest/i}).count(),0);
     assert.equal(await page.locator('.check-btn').count(),0);
@@ -114,9 +141,9 @@ const root = path.resolve(__dirname, '..');
     await page.getByRole('button',{name:'Save changes',exact:true}).click();
     assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('workout-v1')).activeId),currentId);
     await page.locator('[data-nav="progress"]').click();
-    await page.getByText(/1.5 mi · 25 min total/).waitFor();
+    await page.getByText(/2 mi · 35 min total/).waitFor();
     assert.deepEqual(errors,[]);
-    console.log('Browser checks passed: workout logging, history editing, date/sets/treadmill changes, save/sync, cancel, active-session preservation, and progress.');
+    console.log('Browser checks passed: exercise sort, duplicate treadmill cleanup, history preservation, workout logging, history edits, save/cancel/sync, and progress.');
   }finally{
     await browser?.close();server.close();
   }

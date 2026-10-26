@@ -90,6 +90,29 @@ test('saving a history change during an upload schedules another sync before rep
   assert.equal(count,2);assert.equal(uploads[1][0].body_weight_lbs,180);assert.equal(app.run('online'),true);
 });
 
+test('treadmill alias cleanup waits for successful history upload and stays scoped to the owner', async () => {
+  const app=frontend();
+  let fail=true,removed=0,uploaded=[];
+  app.context.uploadRows=async(table,rows)=>{
+    if(table==='workout_sessions'){
+      uploaded=JSON.parse(JSON.stringify(rows));
+      if(fail)return {error:new Error('Upload failed')};
+    }
+    return {error:null};
+  };
+  app.context.removeRows=async(owner,ids)=>{
+    assert.equal(owner,'owner');assert.deepEqual(Array.from(ids),['alias']);
+    assert.equal(uploaded[0].payload.items[0].exerciseId,'ex-incline-treadmill');
+    removed++;return {error:null};
+  };
+  app.run("session={user:{id:'owner'}};state.exercises=[{id:'ex-incline-treadmill',name:'Incline Treadmill',category:'Cardio'},{id:'alias',name:'Treadmill',category:'Cardio'}];state.workouts=[{id:'old',date:'2026-01-01',status:'completed',updatedAt:1,items:[{id:'interval',exerciseId:'alias',kind:'treadmill',miles:1,durationMinutes:20,inclinePercent:0}]}];client={from:table=>({select:async()=>({data:table==='workout_exercises'?[{id:'alias',name:'Treadmill',category:'Cardio'}]:[],error:null}),upsert:async rows=>uploadRows(table,rows),delete:()=>({eq:(_field,owner)=>({in:(_field,ids)=>removeRows(owner,ids)})})})}");
+  await app.run('sync()');assert.equal(removed,0);assert.equal(app.run('online'),false);
+  fail=false;
+  await app.run('sync()');assert.equal(removed,1);assert.equal(app.run('online'),true);
+  assert.equal(uploaded[0].payload.items[0].miles,1);
+  app.run('clearTimeout(timer)');
+});
+
 function backend(status = 'ok') {
   let authCalls = 0;
   const client = {

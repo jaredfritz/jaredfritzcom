@@ -7,6 +7,7 @@ session for the configured owner. Workout history stays out of Git.
 ## Features
 - Start, finish, or discard a workout without fixed routines
 - Searchable exercise list showing days since each exercise was last logged
+- Exercise picker sort options: name, oldest last log first, or newest last log first; the choice is remembered on the device
 - Three sets by default, with previous weights and reps prefilled and editable
 - Edit sets to change the count or individual weights/reps; no completion checkboxes
 - Treadmill distance in miles, duration in minutes, and incline in percent
@@ -60,6 +61,16 @@ until a shared value is explicitly entered. Treadmill entries use a separate ite
 with `kind`, `miles`, `durationMinutes`, and `inclinePercent` instead of sets. These fields
 round-trip through the existing session JSON payload and backup format without a schema change.
 Unused starter exercises are hidden based on recorded history, not removed from historical data.
+
+Sorting uses the last completed session with recorded values, excluding the workout being
+edited and future-dated entries. Never-logged exercises appear first in oldest-first order
+and last in newest-first order. Equal dates are ordered alphabetically.
+
+Treadmill aliases are consolidated into one catalog entry when loading a browser cache,
+importing a backup, or syncing. All historical items and measurements are preserved,
+including multiple intervals in a single workout. During cloud sync, session references
+are saved under the canonical exercise ID before redundant catalog rows are removed.
+Creating another exercise with a treadmill name reuses the existing entry.
 
 History edits remain in a separate draft until Save changes is selected. Cancel discards
 the draft, including newly created exercises. Saving updates the original session and its

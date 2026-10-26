@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { daysSince, recencyLabel, visibleExercises, newExerciseItem, resizeSets, commonSetValue, itemSummary, hasRecord } = require('../workout/logging.mjs');
 const { createWorkoutEdit, commitWorkoutEdit } = require('../workout/logging.mjs');
+const { sortExercises, normalizeTreadmills, TREADMILL_ID } = require('../workout/logging.mjs');
 let sequence=0;
 const uuid=()=>`test-${++sequence}`;
 const strength={id:'strength',name:'Example lift',category:'Push'};
@@ -88,4 +89,38 @@ test('history save refuses newer cloud versions and reconciles matching custom e
   state.exercises.push({id:'remote-custom',name:'Custom lift'});
   assert.equal(commitWorkoutEdit(state,edit,4),true);
   assert.equal(old.items[1].exerciseId,'remote-custom');assert.equal(state.exercises.length,2);
+});
+
+test('last-log sorting handles never-logged exercises, ties, and current/future sessions',()=>{
+  const exercises=[{id:'b',name:'Beta'},{id:'a',name:'Alpha'},{id:'never',name:'Never logged'},{id:'older',name:'Older'}];
+  const history=[workout('older','2026-01-01','completed',[item('older')]),
+    workout('recent','2026-01-05','completed',[item('a'),item('b')]),
+    workout('current','2026-01-06','in_progress',[item('older')]),
+    workout('future','2026-01-10','completed',[item('older')])];
+  assert.deepEqual(sortExercises(exercises,history,'oldest','2026-01-06').map(e=>e.id),['never','older','a','b']);
+  assert.deepEqual(sortExercises(exercises,history,'newest','2026-01-06').map(e=>e.id),['a','b','older','never']);
+  assert.deepEqual(sortExercises(exercises,history,'name','2026-01-06').map(e=>e.id),['a','b','never','older']);
+  assert.equal(exercises[0].id,'b');
+});
+
+test('treadmill consolidation preserves every interval, legacy sets, and history identity',()=>{
+  const first={...newExerciseItem(treadmill,null,uuid),exerciseId:'alias',miles:1,durationMinutes:20,inclinePercent:0};
+  const second={...newExerciseItem(treadmill,null,uuid),exerciseId:TREADMILL_ID,miles:0.5,durationMinutes:10,inclinePercent:3};
+  const legacy=item('alias',null,8);
+  const state={exercises:[strength,{id:'alias',name:'Treadmill',category:'Cardio'},{id:TREADMILL_ID,name:'Incline Treadmill',category:'Cardio'}],
+    workouts:[{...workout('old','2026-01-01','completed',[first,second,legacy]),source_key:'source-fixture',updatedAt:100}],activeId:null};
+  const before=state.workouts[0].items.map(i=>({...i,exerciseId:TREADMILL_ID}));
+  assert.deepEqual(normalizeTreadmills(state,200),['alias']);
+  assert.equal(state.exercises.filter(e=>/treadmill/i.test(e.name)).length,1);
+  assert.deepEqual(state.workouts[0].items,before);
+  assert.equal(state.workouts[0].items.length,3);assert.equal(state.workouts[0].updatedAt,200);
+  assert.equal(state.workouts[0].source_key,'source-fixture');assert.equal(state.workouts[0].status,'completed');
+  assert.deepEqual(normalizeTreadmills(state,300),[]);assert.equal(state.workouts[0].updatedAt,200);
+});
+
+test('normalizing a browser cache does not outrank a newer remote version before sync',()=>{
+  const state={exercises:[{id:'alias',name:'Treadmill'}],workouts:[{...workout('old','2026-01-01','completed',[item('alias')]),updatedAt:10}]};
+  normalizeTreadmills(state);
+  assert.equal(state.workouts[0].updatedAt,10);
+  assert.equal(state.workouts[0].items[0].exerciseId,TREADMILL_ID);
 });

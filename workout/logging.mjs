@@ -1,5 +1,6 @@
 export const isTreadmill = (exercise, item) => item?.kind === 'treadmill' || /treadmill/i.test(exercise?.name || '');
 export const exerciseName = exercise => isTreadmill(exercise) ? 'Treadmill' : exercise.name;
+export const TREADMILL_ID = 'ex-incline-treadmill';
 const numeric = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
 
 export function hasRecord(item) {
@@ -34,6 +35,42 @@ export function visibleExercises(exercises, workouts) {
     .filter(item => hasRecord(item) || w.status === 'in_progress').map(item => item.exerciseId)));
   return exercises.filter(e => isTreadmill(e) || used.has(e.id))
     .sort((a, b) => exerciseName(a).localeCompare(exerciseName(b)));
+}
+
+export function sortExercises(exercises, workouts, order, asOf, exclude) {
+  const dates = new Map(exercises.map(exercise => [exercise.id,
+    latestEntry(workouts, exercise.id, exclude, asOf)?.workout.date || '0000-00-00']));
+  return [...exercises].sort((a, b) => {
+    const comparison = order === 'oldest' ? dates.get(a.id).localeCompare(dates.get(b.id))
+      : order === 'newest' ? dates.get(b.id).localeCompare(dates.get(a.id)) : 0;
+    return comparison || exerciseName(a).localeCompare(exerciseName(b));
+  });
+}
+
+export function normalizeTreadmills(state, now = null) {
+  const treadmillIds = new Set(state.exercises.filter(exercise => isTreadmill(exercise)).map(exercise => exercise.id));
+  treadmillIds.add(TREADMILL_ID);
+  for (const workout of state.workouts) for (const item of workout.items) {
+    if (item.kind === 'treadmill') treadmillIds.add(item.exerciseId);
+  }
+  const canonical = state.exercises.find(exercise => exercise.id === TREADMILL_ID)
+    || { id: TREADMILL_ID, name: 'Incline Treadmill', category: 'Cardio' };
+  // Keep the existing storage name so old clients and the unique-name constraint agree.
+  canonical.name = 'Incline Treadmill';
+  canonical.category = 'Cardio';
+  const aliases = [...treadmillIds].filter(id => typeof id === 'string' && id !== TREADMILL_ID);
+  state.exercises = [...state.exercises.filter(exercise => !treadmillIds.has(exercise.id)), canonical];
+  for (const workout of state.workouts) {
+    let changed = false;
+    for (const item of workout.items) if (treadmillIds.has(item.exerciseId) && item.exerciseId !== TREADMILL_ID) {
+      item.exerciseId = TREADMILL_ID;changed = true;
+    }
+    // Preserve every item and metric, including separate treadmill intervals in one session.
+    if (now !== null && (changed || aliases.length && workout.items.some(item => treadmillIds.has(item.exerciseId)))) {
+      workout.updatedAt = Math.max(now, (workout.updatedAt || 0) + 1);
+    }
+  }
+  return aliases;
 }
 
 export function newExerciseItem(exercise, previous, uuid) {
