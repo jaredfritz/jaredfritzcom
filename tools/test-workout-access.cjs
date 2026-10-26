@@ -70,6 +70,49 @@ test('in-flight sync cannot restore cache after locking', async () => {
   assert.equal(app.run('session'), null);
 });
 
+test('saving a history change during an upload schedules another sync before reporting synced', async () => {
+  const app=frontend();
+  let beginUpload,finishUpload,count=0;
+  const started=new Promise(resolve=>beginUpload=resolve);
+  const held=new Promise(resolve=>finishUpload=resolve);
+  const uploads=[];
+  app.context.upload=async rows=>{
+    uploads.push(JSON.parse(JSON.stringify(rows)));count++;
+    if(count===1){beginUpload();await held}
+    return {error:null};
+  };
+  app.run("session={user:{id:'owner'}};state.workouts=[{id:'history',date:'2026-01-01',status:'completed',items:[],bodyWeight:170,updatedAt:1}];client={from:name=>({select:async()=>({data:[],error:null}),upsert:async rows=>name==='workout_sessions'?upload(rows):({error:null})})}");
+  const syncing=app.run('sync()');await started;
+  app.run('state.workouts[0].bodyWeight=180;touch(state.workouts[0])');
+  finishUpload();await syncing;
+  assert.equal(app.run('online'),false);
+  for(let i=0;i<50&&(count<2||!app.run('online'));i++)await new Promise(resolve=>setTimeout(resolve,10));
+  assert.equal(count,2);assert.equal(uploads[1][0].body_weight_lbs,180);assert.equal(app.run('online'),true);
+});
+
+test('treadmill alias cleanup waits for successful history upload and stays scoped to the owner', async () => {
+  const app=frontend();
+  let fail=true,removed=0,uploaded=[];
+  app.context.uploadRows=async(table,rows)=>{
+    if(table==='workout_sessions'){
+      uploaded=JSON.parse(JSON.stringify(rows));
+      if(fail)return {error:new Error('Upload failed')};
+    }
+    return {error:null};
+  };
+  app.context.removeRows=async(owner,ids)=>{
+    assert.equal(owner,'owner');assert.deepEqual(Array.from(ids),['alias']);
+    assert.equal(uploaded[0].payload.items[0].exerciseId,'ex-incline-treadmill');
+    removed++;return {error:null};
+  };
+  app.run("session={user:{id:'owner'}};state.exercises=[{id:'ex-incline-treadmill',name:'Incline Treadmill',category:'Cardio'},{id:'alias',name:'Treadmill',category:'Cardio'}];state.workouts=[{id:'old',date:'2026-01-01',status:'completed',updatedAt:1,items:[{id:'interval',exerciseId:'alias',kind:'treadmill',miles:1,durationMinutes:20,inclinePercent:0}]}];client={from:table=>({select:async()=>({data:table==='workout_exercises'?[{id:'alias',name:'Treadmill',category:'Cardio'}]:[],error:null}),upsert:async rows=>uploadRows(table,rows),delete:()=>({eq:(_field,owner)=>({in:(_field,ids)=>removeRows(owner,ids)})})})}");
+  await app.run('sync()');assert.equal(removed,0);assert.equal(app.run('online'),false);
+  fail=false;
+  await app.run('sync()');assert.equal(removed,1);assert.equal(app.run('online'),true);
+  assert.equal(uploaded[0].payload.items[0].miles,1);
+  app.run('clearTimeout(timer)');
+});
+
 function backend(status = 'ok') {
   let authCalls = 0;
   const client = {

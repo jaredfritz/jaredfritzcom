@@ -28,6 +28,7 @@
 <dialog id="exercise-dialog" class="dialog" aria-labelledby="exercise-dialog-title">
   <div class="dialog-head"><h2 id="exercise-dialog-title">Add exercise</h2><button data-act="close-exercises" aria-label="Close" class="icon-btn">✕</button></div>
   <input type="search" id="exercise-search" class="search" placeholder="Search exercises" autocomplete="off" aria-label="Search exercises">
+  <div class="exercise-sort"><label for="exercise-sort">Sort exercises</label><select id="exercise-sort"><option value="name">Name (A–Z)</option><option value="oldest">Last logged: oldest first</option><option value="newest">Last logged: newest first</option></select></div>
   <div id="exercise-filters" class="filters"></div>
   <div id="exercise-list" class="exercise-list"></div>
   <form id="custom-exercise-form" class="custom-form">
