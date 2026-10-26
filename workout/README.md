@@ -5,9 +5,12 @@ The static page and its code are public; the server checks the password before i
 session for the configured owner. Workout history stays out of Git.
 
 ## Features
-- Start, finish, or discard a workout; optional A/B/Quick suggestions
-- Searchable exercise catalog and custom exercises
-- Weights, reps, completed sets, body weight, and previous performance
+- Start, finish, or discard a workout without fixed routines
+- Searchable exercise list showing days since each exercise was last logged
+- Three sets by default, with previous weights and reps prefilled and editable
+- Edit sets to change the count or individual weights/reps; no completion checkboxes
+- Treadmill distance in miles, duration in minutes, and incline in percent
+- Only treadmill and previously recorded exercises appear by default; custom exercises remain available
 - Workout history, movement coverage, and highest weights per exercise
 - Browser-local persistence while unlocked, JSON export/import, and cross-device sync
 - A remembered session on each device; Settings → Lock tracker clears its local workout cache
@@ -49,11 +52,24 @@ Sync failures keep the local copy while the tracker remains unlocked.
 The private legacy import supports the original XLSM conversion; a single recorded rep value
 represents one set, not three completed sets.
 
+Strength entries still store individual sets, even when the compact view edits them together.
+The three-set default applies only to new entries; historical set counts remain unchanged.
+When individual sets differ, the compact view displays “Varies” and preserves those values
+until a shared value is explicitly entered. Treadmill entries use a separate item shape
+with `kind`, `miles`, `durationMinutes`, and `inclinePercent` instead of sets. These fields
+round-trip through the existing session JSON payload and backup format without a schema change.
+Unused starter exercises are hidden based on recorded history, not removed from historical data.
+
 ## Verification
 Run `node tools/test-workout-access.cjs` with Node 24 or later. These tests cover the locked
 view, session exchange, clearing cached data, an in-flight sync after lock, and endpoint
 validation/session responses with mocked Auth. Also test the deployed endpoint and database
 grants directly; the tests do not replace live integration checks.
+
+Run `node tools/test-workout-logging.cjs` for recency, catalog visibility, set defaults,
+and treadmill data tests. With Playwright and Chromium installed, run
+`node tools/test-workout-browser.cjs` for a mobile browser check using synthetic local
+data and a mocked cloud client; it does not write to the live database.
 
 The security advisor's “RLS enabled, no policy” notice for the verifier table is intentional:
 only the server's service role can access it.

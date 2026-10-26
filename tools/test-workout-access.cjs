@@ -17,13 +17,14 @@ function frontend() {
   };
   const storage = new Map();
   const context = vm.createContext({
+    ...require('../workout/logging.mjs'),
     window: { WORKOUT_CONFIG: { supabaseUrl: 'https://example.test', supabasePublishableKey: 'public' } },
     document: { querySelector: element, querySelectorAll: () => [], addEventListener() {} },
     localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) },
     crypto: require('node:crypto').webcrypto, setTimeout, clearTimeout,
   });
   const source = fs.readFileSync(path.join(root, 'workout/app.js'), 'utf8');
-  vm.runInContext(source.slice(0, source.lastIndexOf('(async()=>{')), context);
+  vm.runInContext(source.replace(/^import .*;\n/, '').slice(0, source.replace(/^import .*;\n/, '').lastIndexOf('(async()=>{')), context);
   return { context, element, storage, run: code => vm.runInContext(code, context) };
 }
 
