@@ -26,7 +26,7 @@ const root = path.resolve(__dirname, '..');
     await page.route('https://esm.sh/**',route=>route.fulfill({contentType:'text/javascript',body:`
       export function createClient(){return {
         auth:{getSession:async()=>({data:{session:{user:{id:'test-owner'}}}}),onAuthStateChange(){},signOut:async()=>({error:null})},
-        from(){return {select:async()=>({data:[],error:null}),upsert:async()=>({error:null})}}
+        from(table){return {select:async()=>({data:[],error:null}),upsert:async rows=>{if(table==='workout_sessions')window.cloudWorkouts=structuredClone(rows);return {error:null}}}}
       }}
     `}));
     await page.addInitScript(()=>localStorage.setItem('workout-v1',JSON.stringify({
@@ -71,13 +71,52 @@ const root = path.resolve(__dirname, '..');
     await page.screenshot({path:'/tmp/workout-simple-logging.png',fullPage:true});
     await page.getByRole('button',{name:'Finish workout',exact:true}).click();
     await page.locator('[data-nav="history"]').click();
-    await page.getByRole('button').filter({hasText:'Oct 26, 2026'}).click();
-    assert.match(await page.locator('#account-content').innerText(),/1\.25 mi · 20 min · 0% incline/);
-    await page.getByRole('button',{name:'Close',exact:true}).click();
+    await page.locator('[data-act="detail"][data-id="'+active.id+'"]').click();
+    await page.getByRole('heading',{name:'Edit workout',exact:true}).waitFor();
+    const beforeEdit=await page.evaluate(id=>JSON.parse(localStorage.getItem('workout-v1')).workouts.find(w=>w.id===id),active.id);
+    await page.getByLabel('Workout date',{exact:true}).fill('2026-10-25');
+    await page.getByLabel('Body weight (lb)',{exact:true}).fill('180');
+    await lift.getByRole('button',{name:'Edit sets',exact:true}).click();
+    await lift.getByLabel('Number of sets').fill('3');
+    await lift.getByLabel('Number of sets').press('Tab');
+    await lift.getByLabel('Weight set 1',{exact:true}).fill('57.5');
+    await lift.getByLabel('Reps set 3',{exact:true}).fill('10');
+    await cardio.getByLabel('Miles',{exact:true}).fill('1.5');
+    await cardio.getByLabel('Duration (min)',{exact:true}).fill('25');
+    await cardio.getByLabel('Incline (%)',{exact:true}).fill('4');
+    assert.deepEqual(await page.evaluate(id=>JSON.parse(localStorage.getItem('workout-v1')).workouts.find(w=>w.id===id),active.id),beforeEdit);
+    await page.getByLabel('Workout date',{exact:true}).fill('');
+    await page.getByRole('button',{name:'Save changes',exact:true}).click();
+    assert.equal(await page.getByRole('heading',{name:'Edit workout',exact:true}).count(),1);
+    await page.getByLabel('Workout date',{exact:true}).fill('2026-10-25');
+    await page.getByRole('button',{name:'Save changes',exact:true}).click();
+    const saved=await page.evaluate(id=>JSON.parse(localStorage.getItem('workout-v1')).workouts.find(w=>w.id===id),active.id);
+    assert.equal(saved.date,'2026-10-25');assert.equal(saved.bodyWeight,180);assert.equal(saved.status,'completed');
+    assert.deepEqual(saved.items.find(i=>i.exerciseId==='lift').sets.map(s=>s.weight),[57.5,55,55]);
+    assert.equal(saved.items.find(i=>i.exerciseId==='ex-incline-treadmill').miles,1.5);
+    assert.ok(saved.updatedAt>beforeEdit.updatedAt);
+    await page.waitForFunction(id=>window.cloudWorkouts?.some(row=>row.id===id&&row.performed_on==='2026-10-25'&&row.payload.items.some(i=>i.miles===1.5)),active.id);
+    await page.locator('[data-nav="today"]').click();
+    await page.locator('.picker-row').filter({hasText:'Example lift'}).getByRole('button',{name:'Add',exact:true}).click();
+    const currentId=await page.evaluate(()=>JSON.parse(localStorage.getItem('workout-v1')).activeId);
+    await page.locator('[data-nav="history"]').click();
+    await page.locator('[data-act="detail"][data-id="'+active.id+'"]').click();
+    await cardio.getByLabel('Miles',{exact:true}).fill('99');
+    await page.getByRole('button',{name:'+ Add exercise',exact:true}).click();
+    await page.getByLabel('New exercise',{exact:true}).fill('Canceled custom lift');
+    await page.getByRole('button',{name:'Create and add',exact:true}).click();
+    await page.getByRole('button',{name:'Cancel',exact:true}).click();
+    const canceled=await page.evaluate(()=>JSON.parse(localStorage.getItem('workout-v1')));
+    assert.equal(canceled.activeId,currentId);assert.deepEqual(canceled.workouts.find(w=>w.id===active.id),saved);
+    assert.equal(canceled.exercises.some(e=>e.name==='Canceled custom lift'),false);
+    await page.locator('[data-act="detail"][data-id="'+active.id+'"]').click();
+    await page.getByLabel('Body weight (lb)',{exact:true}).fill('181');
+    await page.getByRole('button',{name:'Save changes',exact:true}).click();
+    assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('workout-v1')).activeId),currentId);
     await page.locator('[data-nav="progress"]').click();
-    await page.getByText(/1.25 mi · 20 min total/).waitFor();
+    await page.getByText(/1.5 mi · 25 min total/).waitFor();
     assert.deepEqual(errors,[]);
-    console.log('Browser checks passed: recency, trimmed catalog, default weights, editing sets, treadmill, history, progress, mobile layout.');
+    console.log('Browser checks passed: workout logging, history editing, date/sets/treadmill changes, save/sync, cancel, active-session preservation, and progress.');
   }finally{
     await browser?.close();server.close();
   }

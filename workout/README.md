@@ -12,6 +12,7 @@ session for the configured owner. Workout history stays out of Git.
 - Treadmill distance in miles, duration in minutes, and incline in percent
 - Only treadmill and previously recorded exercises appear by default; custom exercises remain available
 - Workout history, movement coverage, and highest weights per exercise
+- Select any history session to edit its date, exercises, individual sets, treadmill details, or body weight
 - Browser-local persistence while unlocked, JSON export/import, and cross-device sync
 - A remembered session on each device; Settings → Lock tracker clears its local workout cache
 
@@ -59,6 +60,12 @@ until a shared value is explicitly entered. Treadmill entries use a separate ite
 with `kind`, `miles`, `durationMinutes`, and `inclinePercent` instead of sets. These fields
 round-trip through the existing session JSON payload and backup format without a schema change.
 Unused starter exercises are hidden based on recorded history, not removed from historical data.
+
+History edits remain in a separate draft until Save changes is selected. Cancel discards
+the draft, including newly created exercises. Saving updates the original session and its
+sync timestamp without changing its ID, import source, status, or the current workout.
+If a newer version arrives from another device while editing, cancel and reopen the editor
+to avoid overwriting it. Legacy set counts are preserved when opening existing sessions.
 
 ## Verification
 Run `node tools/test-workout-access.cjs` with Node 24 or later. These tests cover the locked

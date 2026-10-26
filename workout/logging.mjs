@@ -73,3 +73,31 @@ export function itemSummary(item, exercise) {
   }
   return (item.sets || []).map(set => `${set.weight ?? '—'} lb × ${set.reps ?? '—'}`).join(' · ') || 'No sets recorded';
 }
+
+export function createWorkoutEdit(workout, exercises) {
+  return {
+    workout: JSON.parse(JSON.stringify(workout)),
+    exercises: JSON.parse(JSON.stringify(exercises)),
+    baseUpdatedAt: workout.updatedAt,
+  };
+}
+
+export function commitWorkoutEdit(state, edit, now = Date.now()) {
+  const current = state.workouts.find(workout => workout.id === edit.workout.id);
+  if (!current || current.status === 'deleted' || current.updatedAt !== edit.baseUpdatedAt) return false;
+  const saved = JSON.parse(JSON.stringify(edit.workout));
+  // Reconcile exercises created on another device while the editor was open.
+  for (const exercise of edit.exercises) {
+    if (!saved.items.some(item => item.exerciseId === exercise.id)) continue;
+    const existing = state.exercises.find(e => e.id === exercise.id || e.name.toLowerCase() === exercise.name.toLowerCase());
+    if (!existing) state.exercises.push(exercise);
+    else if (existing.id !== exercise.id) for (const item of saved.items) {
+      if (item.exerciseId === exercise.id) item.exerciseId = existing.id;
+    }
+  }
+  Object.assign(current, saved, {
+    id: current.id, status: current.status, source_key: current.source_key,
+    updatedAt: Math.max(now, (current.updatedAt || 0) + 1),
+  });
+  return true;
+}

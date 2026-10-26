@@ -70,6 +70,26 @@ test('in-flight sync cannot restore cache after locking', async () => {
   assert.equal(app.run('session'), null);
 });
 
+test('saving a history change during an upload schedules another sync before reporting synced', async () => {
+  const app=frontend();
+  let beginUpload,finishUpload,count=0;
+  const started=new Promise(resolve=>beginUpload=resolve);
+  const held=new Promise(resolve=>finishUpload=resolve);
+  const uploads=[];
+  app.context.upload=async rows=>{
+    uploads.push(JSON.parse(JSON.stringify(rows)));count++;
+    if(count===1){beginUpload();await held}
+    return {error:null};
+  };
+  app.run("session={user:{id:'owner'}};state.workouts=[{id:'history',date:'2026-01-01',status:'completed',items:[],bodyWeight:170,updatedAt:1}];client={from:name=>({select:async()=>({data:[],error:null}),upsert:async rows=>name==='workout_sessions'?upload(rows):({error:null})})}");
+  const syncing=app.run('sync()');await started;
+  app.run('state.workouts[0].bodyWeight=180;touch(state.workouts[0])');
+  finishUpload();await syncing;
+  assert.equal(app.run('online'),false);
+  for(let i=0;i<50&&(count<2||!app.run('online'));i++)await new Promise(resolve=>setTimeout(resolve,10));
+  assert.equal(count,2);assert.equal(uploads[1][0].body_weight_lbs,180);assert.equal(app.run('online'),true);
+});
+
 function backend(status = 'ok') {
   let authCalls = 0;
   const client = {

@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { daysSince, recencyLabel, visibleExercises, newExerciseItem, resizeSets, commonSetValue, itemSummary, hasRecord } = require('../workout/logging.mjs');
+const { createWorkoutEdit, commitWorkoutEdit } = require('../workout/logging.mjs');
 let sequence=0;
 const uuid=()=>`test-${++sequence}`;
 const strength={id:'strength',name:'Example lift',category:'Push'};
@@ -59,4 +60,32 @@ test('treadmill has miles, duration, and incline with no sets, preserves zero in
   assert.equal(itemSummary(JSON.parse(JSON.stringify(added)),treadmill),'1.25 mi · 20 min · 0% incline');
   assert.equal(resizeSets(added,3,uuid),false);
   assert.equal(daysSince([workout('cardio','2026-01-01','completed',[added])],'treadmill','2026-01-03'),2);
+});
+
+test('history edits are isolated until committed and preserve identity, legacy set counts, and the current workout',()=>{
+  const old={...workout('legacy','2026-01-01','completed',[item('strength')]),source_key:'legacy-fixture',updatedAt:100,bodyWeight:170};
+  const state={exercises:[strength,treadmill],workouts:[old,workout('current','2026-01-02','in_progress',[])],activeId:'current'};
+  const draft=createWorkoutEdit(old,state.exercises);
+  draft.workout.date='2025-12-31';draft.workout.bodyWeight=175;draft.workout.items[0].sets[0].weight=25;
+  assert.equal(old.date,'2026-01-01');
+  assert.equal(old.items[0].sets[0].weight,20);
+  assert.equal(commitWorkoutEdit(state,draft,200),true);
+  assert.equal(old.date,'2025-12-31');assert.equal(old.bodyWeight,175);
+  assert.equal(old.items[0].sets.length,1);assert.equal(old.items[0].sets[0].weight,25);
+  assert.equal(old.id,'legacy');assert.equal(old.source_key,'legacy-fixture');assert.equal(old.status,'completed');
+  assert.equal(old.updatedAt,200);assert.equal(state.activeId,'current');assert.equal(state.workouts.length,2);
+});
+
+test('history save refuses newer cloud versions and reconciles matching custom exercises',()=>{
+  const old={...workout('old','2026-01-01','completed',[item('strength')]),updatedAt:1};
+  const state={exercises:[strength],workouts:[old]};
+  const stale=createWorkoutEdit(old,state.exercises);
+  stale.workout.bodyWeight=190;old.updatedAt=2;
+  assert.equal(commitWorkoutEdit(state,stale,3),false);assert.equal(old.bodyWeight,undefined);
+  const edit=createWorkoutEdit(old,state.exercises);
+  edit.exercises.push({id:'local-custom',name:'Custom lift'});
+  edit.workout.items.push(item('local-custom'));
+  state.exercises.push({id:'remote-custom',name:'Custom lift'});
+  assert.equal(commitWorkoutEdit(state,edit,4),true);
+  assert.equal(old.items[1].exerciseId,'remote-custom');assert.equal(state.exercises.length,2);
 });

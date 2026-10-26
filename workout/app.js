@@ -1,31 +1,34 @@
-import { isTreadmill, exerciseName, hasRecord, latestEntry, daysSince, recencyLabel, visibleExercises, newExerciseItem, resizeSets, commonSetValue, itemSummary } from './logging.mjs';
+import { isTreadmill, exerciseName, hasRecord, latestEntry, daysSince, recencyLabel, visibleExercises, newExerciseItem, resizeSets, commonSetValue, itemSummary, createWorkoutEdit, commitWorkoutEdit } from './logging.mjs';
 
 const config=window.WORKOUT_CONFIG||{},KEY='workout-v1',OWNER_KEY='workout-last-owner-v1';
 const $=s=>document.querySelector(s),uuid=()=>crypto.randomUUID(),today=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')},esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const initial=()=>({exercises:[{id:'ex-incline-treadmill',name:'Incline Treadmill',category:'Cardio'}],workouts:[],activeId:null});
 const editingItems=new Set();
+let historyEdit=null;
+const catalog=()=>historyEdit?.exercises||state.exercises;
+const getWorking=()=>historyEdit?.workout||getActive();
 let state;try{state=JSON.parse(localStorage.getItem(KEY))||initial()}catch{state=initial()}if(!Array.isArray(state.exercises)||!Array.isArray(state.workouts))state=initial();
 let booting=true,unlockError='';
 let tab='today',filter='All',query='',client=null,session=null,online=false,timer;
 const byDate=()=>[...state.workouts].filter(w=>w.status!=='deleted').sort((a,b)=>b.date.localeCompare(a.date));
 const getActive=()=>state.workouts.find(w=>w.id===state.activeId&&w.status==='in_progress');
-const ex=id=>state.exercises.find(e=>e.id===id)||{name:id,category:'Other'};
+const ex=id=>catalog().find(e=>e.id===id)||{id,name:id,category:'Other'};
 function notify(s){const t=$('#toast');t.textContent=s;t.hidden=false;clearTimeout(timer);timer=setTimeout(()=>t.hidden=true,3500)}
-function save(){online=false;banner();localStorage.setItem(KEY,JSON.stringify(state));clearTimeout(timerSync);timerSync=setTimeout(sync,1000)}
-let timerSync;
-function last(id,exclude){return latestEntry(state.workouts,id,exclude,today())?.item||null}
+function save(){saveVersion++;online=false;banner();localStorage.setItem(KEY,JSON.stringify(state));clearTimeout(timerSync);timerSync=setTimeout(sync,1000)}
+let timerSync,saveVersion=0;
+function last(id,exclude){return latestEntry(state.workouts,id,exclude,getWorking()?.date||today())?.item||null}
 function lastText(id,exclude){const item=last(id,exclude);return item?itemSummary(item,ex(id)):'No previous entry'}
-function recency(id){return recencyLabel(daysSince(state.workouts,id,today(),getActive()?.id))}
-function touch(workout){workout.updatedAt=Date.now();save()}
+function recency(id){return recencyLabel(daysSince(state.workouts,id,getWorking()?.date||today(),getWorking()?.id))}
+function touch(workout){if(workout===historyEdit?.workout)return;workout.updatedAt=Date.now();save()}
 function start(){
   if(getActive())return;
   const w={id:uuid(),date:today(),status:'in_progress',source_key:null,bodyWeight:null,updatedAt:Date.now(),items:[]};
   state.workouts.unshift(w);state.activeId=w.id;save();render();
 }
 function add(id){
-  const exercise=state.exercises.find(e=>e.id===id);if(!exercise)return;
-  if(!getActive())start();
-  const w=getActive();
+  const exercise=catalog().find(e=>e.id===id);if(!exercise)return;
+  if(!getWorking())start();
+  const w=getWorking();
   if(w.items.some(i=>i.exerciseId===id)){notify('Exercise already added');return}
   w.items.push(newExerciseItem(exercise,last(id,w.id),uuid));touch(w);render();$('#exercise-dialog').close();
 }
@@ -35,7 +38,7 @@ function numberField(label,value,attributes){
 }
 function card(item){
   const exercise=ex(item.exerciseId), treadmill=isTreadmill(exercise,item);
-  const heading='<div class="exercise-head"><div><span class="kicker">'+esc(treadmill?'Cardio':exercise.category)+'</span><h3>'+esc(exerciseName(exercise))+'</h3><div class="exercise-meta">'+esc(recency(exercise.id))+'</div><div class="exercise-meta">Last: '+esc(lastText(exercise.id,getActive()?.id))+'</div></div><button class="text-button danger" data-act="remove" data-item="'+item.id+'">Remove</button></div>';
+  const heading='<div class="exercise-head"><div><span class="kicker">'+esc(treadmill?'Cardio':exercise.category)+'</span><h3>'+esc(exerciseName(exercise))+'</h3><div class="exercise-meta">'+esc(recency(exercise.id))+'</div><div class="exercise-meta">Last: '+esc(lastText(exercise.id,getWorking()?.id))+'</div></div><button class="text-button danger" data-act="remove" data-item="'+item.id+'">Remove</button></div>';
   let content;
   if(treadmill){
     content='<div class="logging-fields treadmill-fields">'+numberField('Miles',item.miles,'step="0.01" data-cardio="miles" data-item="'+item.id+'"')+numberField('Duration (min)',item.durationMinutes,'step="0.1" data-cardio="durationMinutes" data-item="'+item.id+'"')+numberField('Incline (%)',item.inclinePercent,'step="0.5" max="100" data-cardio="inclinePercent" data-item="'+item.id+'"')+'</div>';
@@ -52,7 +55,7 @@ function card(item){
   return '<article class="card exercise-card">'+heading+content+'</article>';
 }
 function exerciseRows(){
-  return visibleExercises(state.exercises,state.workouts).filter(e=>(filter==='All'||e.category===filter)&&exerciseName(e).toLowerCase().includes(query.toLowerCase())).map(e=>'<div class="picker-row"><div><b>'+esc(exerciseName(e))+'</b><div class="recency">'+esc(recency(e.id))+'</div><div class="hint">'+esc(lastText(e.id,getActive()?.id))+'</div></div><button class="btn light sm" data-act="choose" data-id="'+esc(e.id)+'" '+(getActive()?.items.some(item=>item.exerciseId===e.id)?'disabled':'')+'>'+(getActive()?.items.some(item=>item.exerciseId===e.id)?'Added':'Add')+'</button></div>').join('')||'<p class="muted">No matches; create an exercise below.</p>';
+  return visibleExercises(catalog(),[...state.workouts,...(historyEdit?[{...historyEdit.workout,status:"in_progress"}]:[])]).filter(e=>(filter==='All'||e.category===filter)&&exerciseName(e).toLowerCase().includes(query.toLowerCase())).map(e=>'<div class="picker-row"><div><b>'+esc(exerciseName(e))+'</b><div class="recency">'+esc(recency(e.id))+'</div><div class="hint">'+esc(lastText(e.id,getWorking()?.id))+'</div></div><button class="btn light sm" data-act="choose" data-id="'+esc(e.id)+'" '+(getWorking()?.items.some(item=>item.exerciseId===e.id)?'disabled':'')+'>'+(getWorking()?.items.some(item=>item.exerciseId===e.id)?'Added':'Add')+'</button></div>').join('')||'<p class="muted">No matches; create an exercise below.</p>';
 }
 function viewToday(){
   const w=getActive();
@@ -66,6 +69,26 @@ function viewToday(){
 function viewHistory(){
   const ws=byDate();
   return '<div class="section-head"><h2>Workout history</h2><button class="btn light sm" data-act="import">Import</button></div><section class="metrics"><div class="metric"><b>'+ws.length+'</b><span>Dated entries</span></div><div class="metric"><b>'+ws.filter(w=>w.items.length).length+'</b><span>With exercise</span></div><div class="metric"><b>'+ws.reduce((n,w)=>n+w.items.reduce((m,i)=>m+(isTreadmill(ex(i.exerciseId),i)?0:(i.sets||[]).length),0),0)+'</b><span>Strength sets</span></div></section><section class="card"><div class="card-title"><h2>Sessions</h2><button class="btn ghost sm" data-act="export">Export JSON</button></div>'+(ws.map(w=>'<div class="workout-row"><button data-act="detail" data-id="'+w.id+'"><div class="date">'+fmt(w.date)+'</div><div class="summary">'+w.items.length+' exercises · '+esc(w.items.map(i=>exerciseName(ex(i.exerciseId))).join(', ')||'No exercises recorded')+'</div></button><span>›</span></div>').join('')||'<p class="muted">No recorded sessions yet.</p>')+'</section>';
+}
+function openHistoryEditor(id){
+  const workout=state.workouts.find(w=>w.id===id&&w.status!=='deleted');if(!workout)return;
+  historyEdit=createWorkoutEdit(workout,state.exercises);editingItems.clear();tab='history';render();
+  $('#workout-date').focus();
+}
+function cancelHistoryEditor(){historyEdit=null;editingItems.clear();render()}
+function saveHistoryEditor(){
+  if(!historyEdit)return;
+  const invalid=$('#screen').querySelector('input:invalid');
+  if(invalid){invalid.reportValidity();return}
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(historyEdit.workout.date)){notify('Choose a valid workout date');return}
+  if(!commitWorkoutEdit(state,historyEdit)){
+    notify('This session changed on another device. Cancel and reopen it to load the latest version.');return;
+  }
+  historyEdit=null;editingItems.clear();save();render();notify('Session updated');
+}
+function viewHistoryEditor(){
+  const workout=historyEdit.workout;
+  return '<section class="hero"><span class="eyebrow">HISTORY</span><h2>Edit workout</h2><p>Changes are saved when you choose Save changes.</p></section><section class="card"><label class="log-field" for="workout-date"><span>Workout date</span><input class="account-input" id="workout-date" type="date" required value="'+esc(workout.date)+'"></label></section><section class="stack">'+(workout.items.map(card).join('')||'<p class="muted">No exercises in this session.</p>')+'<button class="btn light full" data-act="picker">+ Add exercise</button></section><section class="card"><div class="row"><label for="bw">Body weight (lb)</label><input id="bw" class="field" style="max-width:110px" type="number" min="0" step="0.1" value="'+(workout.bodyWeight??'')+'"></div></section><div class="history-edit-actions"><button class="btn" data-act="save-history">Save changes</button><button class="btn light" data-act="cancel-history">Cancel</button></div>';
 }
 function viewProgress(){
   const ws=byDate().filter(w=>w.status==='completed'&&w.items.length),cats={};
@@ -94,7 +117,7 @@ function render(){
     return;
   }
   document.querySelectorAll('[data-nav]').forEach(b=>b.classList.toggle('active',b.dataset.nav===tab));
-  $('#screen').innerHTML=tab==='today'?viewToday():tab==='history'?viewHistory():viewProgress();banner();
+  $('#screen').innerHTML=historyEdit?viewHistoryEditor():tab==='today'?viewToday():tab==='history'?viewHistory():viewProgress();banner();
 }
 function banner(){
   if(!session){$('#sync-banner').textContent='';return}
@@ -102,7 +125,7 @@ function banner(){
 }
 function picker(){filter='All';query='';$('#exercise-search').value='';drawPicker();$('#exercise-dialog').showModal()}
 function drawPicker(){
-  const available=visibleExercises(state.exercises,state.workouts),categories=['All',...new Set(available.map(e=>e.category))];
+  const available=visibleExercises(catalog(),[...state.workouts,...(historyEdit?[{...historyEdit.workout,status:'in_progress'}]:[])]),categories=['All',...new Set(available.map(e=>e.category))];
   $('#exercise-filters').innerHTML=categories.map(c=>'<button class="chip '+(filter===c?'selected':'')+'" data-filter="'+esc(c)+'">'+esc(c)+'</button>').join('');
   $('#exercise-list').innerHTML=exerciseRows();
 }
@@ -111,7 +134,7 @@ function settings(){
   $('#account-dialog').showModal();
 }
 function clearLockedView(){
-  clearTimeout(timerSync);editingItems.clear();session=null;online=false;state=initial();
+  clearTimeout(timerSync);historyEdit=null;editingItems.clear();session=null;online=false;state=initial();
   localStorage.removeItem(KEY);
   document.querySelectorAll('dialog[open]').forEach(d=>d.close());
   render();
@@ -129,13 +152,13 @@ async function unlock(password){
 }
 function exportData(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({format:'workout-v1',exercises:state.exercises,workouts:state.workouts},null,2)],{type:'application/json'}));a.download='workouts-'+today()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 async function importData(file){if(!file||file.size>5000000)return notify('Invalid or oversized backup');try{const d=JSON.parse(await file.text());let es=[],ws=[];if(d.format==='workout-v1'){es=d.exercises;ws=d.workouts}else if(d.format==='workout-tracker-legacy-v1'){const index=new Map(state.exercises.map(e=>[e.name,e.id]));for(const r of d.records){const items=[];for(const i of r.items||[]){if(!index.has(i.exercise)){const eid=uuid();es.push({id:eid,name:i.exercise,category:'Other'});index.set(i.exercise,eid)}items.push({id:uuid(),exerciseId:index.get(i.exercise),sets:i.sets.map(s=>({id:uuid(),weight:s.weight,reps:s.reps,done:true}))})}ws.push({id:uuid(),date:r.date,source_key:r.source_key,status:'completed',bodyWeight:r.body_weight,items,updatedAt:Date.now()})}}else throw Error('Unsupported format');if(!Array.isArray(es)||!Array.isArray(ws))throw Error('Invalid records');for(const e of es)if(typeof e.id==='string'&&typeof e.name==='string'&&!state.exercises.some(x=>x.id===e.id||x.name===e.name))state.exercises.push(e);let n=0;for(const w of ws)if(/^\d{4}-\d{2}-\d{2}$/.test(w.date)&&Array.isArray(w.items)&&!state.workouts.some(x=>x.id===w.id||w.source_key&&x.source_key===w.source_key)){state.workouts.push(w);n++}save();render();notify(n+' records imported')}catch(e){notify('Import failed: '+e.message)}}
-async function sync(){if(!client||!session||sync.busy)return;const owner=session.user.id;const previousOwner=localStorage.getItem(OWNER_KEY);if(previousOwner&&previousOwner!==owner){online=false;notify('Different account detected. Export local data and use the original account.');return}sync.busy=true;try{const [er,wr]=await Promise.all([client.from('workout_exercises').select('*'),client.from('workout_sessions').select('*')]);if(er.error)throw er.error;if(wr.error)throw wr.error;if(session?.user?.id!==owner)return;for(const e of er.data)if(!state.exercises.some(x=>x.id===e.id))state.exercises.push({id:e.id,name:e.name,category:e.category});for(const r of wr.data){const w=state.workouts.find(w=>w.id===r.id),remote={...r.payload,id:r.id,date:r.performed_on,status:r.status,source_key:r.source_key,bodyWeight:r.body_weight_lbs,updatedAt:Date.parse(r.updated_at)};if(!w)state.workouts.push(remote);else if(remote.updatedAt>w.updatedAt)Object.assign(w,remote)}const eRows=state.exercises.map(e=>({id:e.id,user_id:owner,name:e.name,category:e.category})),wRows=state.workouts.map(w=>({id:w.id,user_id:owner,performed_on:w.date,status:w.status,source_key:w.source_key||null,body_weight_lbs:w.bodyWeight??null,payload:{items:w.items},updated_at:new Date(w.updatedAt||Date.now()).toISOString()}));for(let n=0;n<eRows.length;n+=100){const r=await client.from('workout_exercises').upsert(eRows.slice(n,n+100),{onConflict:'user_id,id'});if(r.error)throw r.error}for(let n=0;n<wRows.length;n+=100){const r=await client.from('workout_sessions').upsert(wRows.slice(n,n+100),{onConflict:'id'});if(r.error)throw r.error}if(session?.user?.id!==owner)return;localStorage.setItem(KEY,JSON.stringify(state));localStorage.setItem(OWNER_KEY,owner);online=true;if(!document.activeElement?.matches('input,select,textarea'))render()}catch(e){online=false;notify('Cloud sync failed; local copy kept: '+e.message)}finally{sync.busy=false;banner()}}
+async function sync(){if(!client||!session||sync.busy)return;const owner=session.user.id;const previousOwner=localStorage.getItem(OWNER_KEY);if(previousOwner&&previousOwner!==owner){online=false;notify('Different account detected. Export local data and use the original account.');return}sync.busy=true;const version=saveVersion;try{const [er,wr]=await Promise.all([client.from('workout_exercises').select('*'),client.from('workout_sessions').select('*')]);if(er.error)throw er.error;if(wr.error)throw wr.error;if(session?.user?.id!==owner)return;for(const e of er.data)if(!state.exercises.some(x=>x.id===e.id))state.exercises.push({id:e.id,name:e.name,category:e.category});for(const r of wr.data){const w=state.workouts.find(w=>w.id===r.id),remote={...r.payload,id:r.id,date:r.performed_on,status:r.status,source_key:r.source_key,bodyWeight:r.body_weight_lbs,updatedAt:Date.parse(r.updated_at)};if(!w)state.workouts.push(remote);else if(remote.updatedAt>w.updatedAt)Object.assign(w,remote)}const eRows=state.exercises.map(e=>({id:e.id,user_id:owner,name:e.name,category:e.category})),wRows=state.workouts.map(w=>({id:w.id,user_id:owner,performed_on:w.date,status:w.status,source_key:w.source_key||null,body_weight_lbs:w.bodyWeight??null,payload:{items:w.items},updated_at:new Date(w.updatedAt||Date.now()).toISOString()}));for(let n=0;n<eRows.length;n+=100){const r=await client.from('workout_exercises').upsert(eRows.slice(n,n+100),{onConflict:'user_id,id'});if(r.error)throw r.error}for(let n=0;n<wRows.length;n+=100){const r=await client.from('workout_sessions').upsert(wRows.slice(n,n+100),{onConflict:'id'});if(r.error)throw r.error}if(session?.user?.id!==owner)return;localStorage.setItem(KEY,JSON.stringify(state));localStorage.setItem(OWNER_KEY,owner);online=version===saveVersion;if(!document.activeElement?.matches('input,select,textarea'))render()}catch(e){online=false;notify('Cloud sync failed; local copy kept: '+e.message)}finally{sync.busy=false;if(session?.user?.id===owner&&version!==saveVersion){clearTimeout(timerSync);timerSync=setTimeout(sync,0)}banner()}}
 document.addEventListener('click',async event=>{
   if(!session)return;
   const button=event.target.closest('[data-act],[data-nav],[data-filter]');if(!button)return;
-  if(button.dataset.nav){tab=button.dataset.nav;render();return}
+  if(button.dataset.nav){if(historyEdit){notify('Save or cancel your session edits first');return}tab=button.dataset.nav;render();return}
   if(button.dataset.filter){filter=button.dataset.filter;drawPicker();return}
-  const action=button.dataset.act,w=getActive(),item=w?.items.find(i=>i.id===button.dataset.item);
+  const action=button.dataset.act,w=getWorking(),item=w?.items.find(i=>i.id===button.dataset.item);
   if(action==='start'){start();picker()}
   if(action==='picker')picker();
   if(action==='close-exercises')$('#exercise-dialog').close();
@@ -154,12 +177,11 @@ document.addEventListener('click',async event=>{
     w.status='completed';state.activeId=null;editingItems.clear();touch(w);render();notify('Workout saved');
   }
   if(action==='discard'&&w&&confirm('Discard current workout?')){w.status='deleted';state.activeId=null;editingItems.clear();touch(w);render()}
-  if(action==='detail'){
-    const workout=state.workouts.find(w=>w.id===button.dataset.id);if(!workout)return;
-    $('#account-content').innerHTML='<h3>'+fmt(workout.date)+'</h3>'+workout.items.map(i=>'<p><b>'+esc(exerciseName(ex(i.exerciseId)))+'</b><br>'+esc(itemSummary(i,ex(i.exerciseId)))+'</p>').join('')+'<p class="muted">Body weight: '+(workout.bodyWeight??'—')+'</p>';
-    $('#account-dialog').showModal();
-  }
+  if(action==='detail')openHistoryEditor(button.dataset.id);
+  if(action==='save-history')saveHistoryEditor();
+  if(action==='cancel-history')cancelHistoryEditor();
   if(action==='signout'){
+    if(historyEdit&&!confirm('Discard your unsaved session edits and lock the tracker?'))return;
     if(!online&&!confirm('Sync is pending. Export a backup before locking, or continue and clear this browser copy?'))return;
     const {error}=await client.auth.signOut({scope:'local'});
     if(error){notify('Unable to lock. Please try again.');return}
@@ -172,7 +194,8 @@ document.addEventListener('input',event=>{
   const input=event.target;
   if(input.id==='exercise-search'){query=input.value;drawPicker();return}
   if(input.dataset.setCount)return;
-  const w=getActive();if(!w)return;
+  const w=getWorking();if(!w)return;
+  if(input.id==='workout-date'){if(input.value)w.date=input.value;return}
   const value=input.value===''?null:input.valueAsNumber;
   if(value!==null&&(!Number.isFinite(value)||value<0))return;
   const item=w.items.find(i=>i.id===input.dataset.item);
@@ -194,11 +217,11 @@ document.addEventListener('input',event=>{
 });
 document.addEventListener('change',event=>{
   if(!session||!event.target.dataset.setCount)return;
-  const w=getActive(),item=w?.items.find(i=>i.id===event.target.dataset.setCount);
+  const w=getWorking(),item=w?.items.find(i=>i.id===event.target.dataset.setCount);
   if(item&&resizeSets(item,event.target.valueAsNumber,uuid)){touch(w);render()}
   else{notify('Choose between 1 and 20 sets');render()}
 });
-document.addEventListener('submit',async e=>{if(e.target.id==='unlock-form'){e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;button.textContent='Unlocking…';try{await unlock($('#workout-password').value)}catch(error){unlockError=error.message;$('#unlock-error').textContent=unlockError;button.disabled=false;button.textContent='Unlock';$('#workout-password').focus()}return}if(!session)return;if(e.target.id==='custom-exercise-form'){e.preventDefault();const name=$('#custom-name').value.trim();if(!name)return;let x=state.exercises.find(x=>x.name.toLowerCase()===name.toLowerCase());if(!x){x={id:uuid(),name:name.slice(0,80),category:$('#custom-category').value};state.exercises.push(x)}save();add(x.id);$('#custom-name').value=''}});
+document.addEventListener('submit',async e=>{if(e.target.id==='unlock-form'){e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;button.textContent='Unlocking…';try{await unlock($('#workout-password').value)}catch(error){unlockError=error.message;$('#unlock-error').textContent=unlockError;button.disabled=false;button.textContent='Unlock';$('#workout-password').focus()}return}if(!session)return;if(e.target.id==='custom-exercise-form'){e.preventDefault();const name=$('#custom-name').value.trim();if(!name)return;let x=catalog().find(x=>x.name.toLowerCase()===name.toLowerCase());if(!x){x={id:uuid(),name:name.slice(0,80),category:$('#custom-category').value};catalog().push(x)}if(!historyEdit)save();add(x.id);$('#custom-name').value=''}});
 $('#import-file').addEventListener('change',e=>importData(e.target.files[0]));
 if(state.activeId&&!getActive())state.activeId=null;render();
 (async()=>{
